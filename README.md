@@ -1,13 +1,6 @@
-# Substrate Node Template
+# Feeless Pallet Chain
 
-[![Try on playground](https://img.shields.io/badge/Playground-Node_Template-brightgreen?logo=Parity%20Substrate)](https://playground.substrate.dev/?deploy=node-template)
-
-A fresh FRAME-based [Substrate](https://www.substrate.io/) node, ready for hacking :rocket:
-
-## Getting Started
-
-Follow the steps below to get started with the Node Template, or get it up and running right from your browser
-in just a few clicks using [Playground](https://playground.substrate.dev/) :hammer_and_wrench:
+An implementation of feeless pallet, written in Frame v2 syntax, following along with Substrate Seminar by Shawn Tabrizi - https://www.youtube.com/watch?v=7GOd2g4JZqg
 
 ### Using Nix
 
