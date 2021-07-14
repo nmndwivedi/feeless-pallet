@@ -2,15 +2,6 @@
 
 An implementation of feeless pallet, written in Frame v2 syntax, following along with Substrate Seminar by Shawn Tabrizi - https://www.youtube.com/watch?v=7GOd2g4JZqg
 
-### Using Nix
-
-Install [nix](https://nixos.org/) and optionally [direnv](https://github.com/direnv/direnv) and [lorri](https://github.com/target/lorri) for a fully plug
-and play experience for setting up the development environment. To get all the correct dependencies activate direnv `direnv allow` and lorri `lorri shell`.
-
-### Rust Setup
-
-First, complete the [basic Rust setup instructions](./docs/rust-setup.md).
-
 ### Run
 
 Use Rust's native `cargo` command to build and launch the template node:
