@@ -6,17 +6,22 @@
 
 pub use pallet::*;
 
-#[cfg(feature = "runtime-benchmarks")]
-mod benchmarking;
+#[cfg(test)]
+mod mock;
+
+#[cfg(test)]
+mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {
 	use frame_support::{Twox128, dispatch::{DispatchResult, GetDispatchInfo}, pallet_prelude::*, weights::Pays};
 	use frame_system::pallet_prelude::*;
 	use sp_std::prelude::*;
+	use sp_std::convert::TryInto;
 	use sp_runtime::traits::Dispatchable;
 
-	type Count = u32;
+	type CallCount = u32;
+	type Session<T> = BlockNumberFor<T>;
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
@@ -32,18 +37,14 @@ pub mod pallet {
 	pub struct Pallet<T>(_);
 
 	#[pallet::storage]
-	#[pallet::getter(fn user_calls)]
-	pub type UserCalls<T: Config> = StorageMap<_, Twox128, T::AccountId, Count>;
-
-	#[pallet::storage]
-	#[pallet::getter(fn session)]
-	pub type Session<T: Config> = StorageValue<Value = T::BlockNumber, QueryKind = ValueQuery>;
+	#[pallet::getter(fn user_record)]
+	pub type UserRecord<T: Config> = StorageMap<_, Twox128, T::AccountId, (Session<T>, CallCount)>;
 
 	#[pallet::type_value]
-	pub(super) fn SessionLengthDefault<T: Config>() -> T::BlockNumber { 1000u32.into() }
+	pub(super) fn SessionLengthDefault<T: Config>() -> Session<T> { 1000u32.into() }
 	#[pallet::storage]
 	#[pallet::getter(fn session_length)]
-	pub(super) type SessionLength<T: Config> = StorageValue<Value = T::BlockNumber, QueryKind = ValueQuery, OnEmpty = SessionLengthDefault<T>>;
+	pub(super) type SessionLength<T: Config> = StorageValue<Value = Session<T>, QueryKind = ValueQuery, OnEmpty = SessionLengthDefault<T>>;
 
 	#[pallet::type_value]
 	pub(super) fn MaxCallsDefault<T: Config>() -> u32 { 100u32 }
@@ -59,13 +60,12 @@ pub mod pallet {
 
 	pub enum Event<T: Config> {
 		ExtrinsicResult(T::AccountId, DispatchResult),
+		CallQuotaExhausted(T::AccountId),
 	}
 
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
-		/// Error names should be descriptive.
-		CallQuotaExhausted,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -77,30 +77,34 @@ pub mod pallet {
 		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
 		#[pallet::weight({
 			let dispatch_info = call.get_dispatch_info();
-			(dispatch_info.weight + T::DbWeight::get().reads_writes(4, 1), dispatch_info.class, Pays::Yes)
+			(dispatch_info.weight + T::DbWeight::get().reads_writes(3, 1), dispatch_info.class, Pays::Yes)
 		})]
 		pub fn make_feeless(origin: OriginFor<T>, call: Box<<T as Config>::Call>) -> DispatchResultWithPostInfo {
 			let user = ensure_signed(origin.clone())?;
 			
-			let block_number = frame_system::Pallet::<T>::block_number();
-			let last_session = Session::<T>::get();
-			let session_len = SessionLength::<T>::get();
+			let block_number = TryInto::<u64>::try_into(frame_system::Pallet::<T>::block_number()).unwrap_or_default();
+			let session_len = TryInto::<u64>::try_into(SessionLength::<T>::get()).unwrap_or_default();
 			
-			let mut user_calls = UserCalls::<T>::get(&user).unwrap_or(0);
+			let (last_session, mut user_calls) = UserRecord::<T>::get(&user).unwrap_or((0u32.into(), 0));
 			let max_calls = Pallet::<T>::max_calls();
 
-			if block_number - last_session > session_len {
-				let current_session = (block_number / session_len) * session_len;
-				Session::<T>::put(current_session);
+			let last_session = TryInto::<u64>::try_into(last_session).unwrap_or_default();
+
+			let current_session = block_number.checked_div(session_len).ok_or("Division failed")?.checked_mul(session_len).ok_or("Multiplication failed")?;
+
+			if block_number.checked_sub(last_session).unwrap_or_default() > session_len {
 				user_calls = 0;
 			}
 
-			if user_calls >= max_calls { //, Error::<T>::CallQuotaExhausted);
-				let check_weight = T::DbWeight::get().reads(4);
+			if user_calls >= max_calls {
+				let check_weight = T::DbWeight::get().reads(3);
+				Pallet::<T>::deposit_event(Event::<T>::CallQuotaExhausted(user));
 				return Ok(Some(check_weight).into());
 			}
 
-			UserCalls::<T>::insert(&user, user_calls.checked_add(1).ok_or("Value overflow")?);
+			let current_session: Session<T> = (current_session as u32).into();
+
+			UserRecord::<T>::insert(&user, (current_session, user_calls.checked_add(1).ok_or("Value overflow")?));
 
 			let r1 = call.dispatch(origin);
 			// let _r2 = call.get_dispatch_info();
