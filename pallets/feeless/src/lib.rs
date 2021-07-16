@@ -66,6 +66,8 @@ pub mod pallet {
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
+		DivideByZero,
+		NumOverflow,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -90,7 +92,7 @@ pub mod pallet {
 
 			let last_session = TryInto::<u64>::try_into(last_session).unwrap_or_default();
 
-			let current_session = block_number.checked_div(session_len).ok_or("Division failed")?.checked_mul(session_len).ok_or("Multiplication failed")?;
+			let current_session = block_number.checked_div(session_len).ok_or(Error::<T>::DivideByZero)?.checked_mul(session_len).ok_or(Error::<T>::NumOverflow)?;
 
 			if block_number.checked_sub(last_session).unwrap_or_default() > session_len {
 				user_calls = 0;
@@ -104,7 +106,7 @@ pub mod pallet {
 
 			let current_session: Session<T> = (current_session as u32).into();
 
-			UserRecord::<T>::insert(&user, (current_session, user_calls.checked_add(1).ok_or("Value overflow")?));
+			UserRecord::<T>::insert(&user, (current_session, user_calls.checked_add(1).ok_or(Error::<T>::NumOverflow)?));
 
 			let r1 = call.dispatch(origin);
 			// let _r2 = call.get_dispatch_info();
